@@ -1,0 +1,194 @@
+<!-- core/templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Speed Test</title>
+    {% load static %}
+    <style>
+        body {
+            background-image: url("{% static 'background.jpg' %}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+        }
+        .logo {
+            margin-top: 50px;
+            font-size: 40px;
+            font-weight: bold;
+            color: #e50914;
+        }
+        .speed-container {
+            margin-top: 100px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .speed {
+            font-size: 120px;
+            color: #fff;
+            font-weight: bold;
+            margin: 0;
+            line-height: 1;
+        }
+        .unit {
+            font-size: 40px;
+            color: #fff;
+            vertical-align: super;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            background-color: #e50914;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .hidden { display: none; }
+        #loading { font-size: 24px; color: #e50914; margin: 20px; }
+        .footer { 
+            margin-top: auto; 
+            padding-bottom: 20px; 
+            color: #fff; 
+            font-size: 12px; 
+            background: rgba(0, 0, 0, 0.5);
+            width: 100%;
+            text-align: center;
+        }
+        h3 { color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="logo">FAST</div>
+    <div class="speed-container">
+        <h1 class="speed" id="speed">---</h1>
+        <span class="unit">Mbps</span>
+    </div>
+    <h3 id="download">Download: --- Mbps</h3>
+    <h3 id="upload">Upload: --- Mbps</h3>
+    <button id="startBtn" onclick="startTest()">Start Test</button>
+    <button id="restartBtn" class="hidden" onclick="location.reload()">Restart</button>
+    <div id="loading" class="hidden">⏳ Testing (30s)...</div>
+    <div class="footer">Powered by Salohiddin</div>
+
+    <script>
+        const speedElement = document.getElementById('speed');
+        const downloadElement = document.getElementById('download');
+        const uploadElement = document.getElementById('upload');
+        const testFiles = [
+            '/static/testfile1.jpg',
+            '/static/testfile2.jpg',
+            '/static/testfile3.jpg'
+        ];
+        let fileIndex = 0;
+
+        function startTest() {
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('restartBtn').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            speedElement.textContent = '---';
+            downloadElement.textContent = 'Download: --- Mbps';
+            uploadElement.textContent = 'Upload: --- Mbps';
+
+            let totalDownloadSpeed = 0;
+            let downloadMeasurements = 0;
+            let totalUploadSpeed = 0;
+            let uploadMeasurements = 0;
+            const startTime = Date.now();
+
+            // Download Test (first 15 seconds)
+            const downloadInterval = setInterval(() => {
+                const now = Date.now();
+                const seconds = (now - startTime) / 1000;
+                if (seconds > 15) {
+                    clearInterval(downloadInterval);
+                    startUploadTest();
+                    return;
+                }
+
+                const url = `${testFiles[fileIndex]}?_=${Date.now()}`;
+                fileIndex = (fileIndex + 1) % testFiles.length;
+                const fetchStart = Date.now();
+                fetch(url, { cache: 'no-store' })
+                    .then(res => res.blob())
+                    .then(blob => {
+                        const duration = (Date.now() - fetchStart) / 1000;
+                        if (duration > 0) {
+                            const bitsLoaded = blob.size * 8;
+                            const speedMbps = (bitsLoaded / duration / 1024 / 1024).toFixed(2);
+                            totalDownloadSpeed += parseFloat(speedMbps);
+                            downloadMeasurements++;
+                            downloadElement.textContent = `Download: ${speedMbps} Mbps`;
+                        }
+                    })
+                    .catch(() => {
+                        downloadElement.textContent = 'Download: Error';
+                    });
+            }, 2000);
+
+            // Upload Test (last 15 seconds)
+            function startUploadTest() {
+                const uploadStartTime = Date.now();
+                const uploadInterval = setInterval(() => {
+                    const now = Date.now();
+                    const seconds = (now - uploadStartTime) / 1000;
+                    if (seconds > 15) {
+                        clearInterval(uploadInterval);
+                        finalizeTest();
+                        return;
+                    }
+
+                    const blob = new Blob([new ArrayBuffer(5 * 1024 * 1024)]);
+                    const formData = new FormData();
+                    formData.append('file', blob, 'testfile.bin');
+
+                    const uploadStart = Date.now();
+                    fetch('/upload/', {
+                        method: 'POST',
+                        body: formData
+                    }).then(() => {
+                        const duration = (Date.now() - uploadStart) / 1000;
+                        if (duration > 0) {
+                            const bitsUploaded = 5 * 1024 * 1024 * 8;
+                            const speedMbps = (bitsUploaded / duration / 1024 / 1024).toFixed(2);
+                            totalUploadSpeed += parseFloat(speedMbps);
+                            uploadMeasurements++;
+                            uploadElement.textContent = `Upload: ${speedMbps} Mbps`;
+                        }
+                    }).catch(() => {
+                        uploadElement.textContent = 'Upload: Error';
+                    });
+                }, 2000);
+            }
+
+            // Finalize Test
+            function finalizeTest() {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('restartBtn').classList.remove('hidden');
+                document.getElementById('startBtn').disabled = false;
+                const avgDownload = downloadMeasurements > 0 ? (totalDownloadSpeed / downloadMeasurements).toFixed(2) : 0;
+                const avgUpload = uploadMeasurements > 0 ? (totalUploadSpeed / uploadMeasurements).toFixed(2) : 0;
+                const overallSpeed = (parseFloat(avgDownload) + parseFloat(avgUpload)) / 2;
+                speedElement.textContent = overallSpeed.toFixed(2);
+                downloadElement.textContent = `Download: ${avgDownload} Mbps`;
+                uploadElement.textContent = `Upload: ${avgUpload} Mbps`;
+            }
+        }
+    </script>
+</body>
+</html>
